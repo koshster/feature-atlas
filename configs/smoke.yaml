@@ -1,0 +1,8 @@
+# A small real run for checking the pipeline end to end on a laptop.
+# Settings not listed here use the defaults in src/feature_atlas/config.py.
+seed: 0
+data:
+  dataset: NeelNanda/pile-10k
+cache:
+  total_contexts: 2000
+  shard_contexts: 500
