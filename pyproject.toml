@@ -28,6 +28,16 @@ dev = [
     "types-pyyaml",
 ]
 
+# CI runs on Linux, where the default torch wheel pulls in gigabytes of CUDA libraries.
+# Notebooks install with pip, so this affects only uv.lock users.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
