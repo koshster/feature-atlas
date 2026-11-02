@@ -1,0 +1,67 @@
+[project]
+name = "feature-atlas"
+version = "0.0.1"
+description = "Sparse autoencoders that explain and steer GPT-2."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=4",
+    "numpy>=2",
+    "pydantic>=2.7",
+    "pyyaml>=6",
+    # Lower bound only: notebooks must keep their pre-installed CUDA-matched build.
+    "torch>=2.2",
+    # TL 4 removed HookedTransformer, and SAELens requires TL below 4.
+    "transformer-lens>=3.9,<4",
+    "typer>=0.12",
+]
+
+[project.scripts]
+atlas = "feature_atlas.cli:app"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "pytest>=8",
+    "ruff>=0.5",
+    "types-pyyaml",
+]
+
+# CI runs on Linux, where the default torch wheel pulls in gigabytes of CUDA libraries.
+# Notebooks install with pip, so this affects only uv.lock users.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/feature_atlas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -m 'not slow'"
+markers = ["slow: needs network access or real model weights"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["datasets.*", "transformer_lens.*"]
+ignore_missing_imports = true

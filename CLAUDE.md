@@ -6,7 +6,7 @@ The full design is in `docs/PLAN.md`. Phase status, results and failure stories 
 
 ## Current status
 
-Phase 0 (planning). There is no application code yet, so the commands below take effect from Phase 1.
+Phase 1 (foundations): activation pipeline built and tested. See `docs/PROGRESS.md` for what remains.
 
 ## Hard rules
 
@@ -40,6 +40,8 @@ Phase 0 (planning). There is no application code yet, so the commands below take
 - The reference `gpt2-small-res-jb` SAEs expect `center_writing_weights: true`. Compare SAEs only on activations produced with identical settings.
 - λ (L1 coefficient) isn't comparable between implementations. Compare at matched L0 and explained variance.
 - Free GPU sessions die without warning. Checkpoints must be atomic and synced to the Hub, and quota counts idle session time.
+- `stop_at_layer=N` stops before block N, so that block's `hook_resid_pre` never fires. Use the returned residual, as `ModelBackend.activations` does.
+- Position 0 of every context has about 30× the norm of other positions, whatever the token, and holds 88% of the squared magnitude. It can dominate L2 loss and explained variance.
 - Report online-source reproducibility as statistical. Only shard-based resume is bit-exact.
 
 ## Engineering standards
@@ -61,5 +63,7 @@ uv run pytest -m slow                      # network tests
 uv run ruff check . && uv run ruff format . # lint and format
 uv run mypy src                            # type check
 uv run pre-commit run --all-files          # all hooks
-uv run atlas --help                        # CLI, from Phase 1
+uv run atlas --help                        # CLI
+uv run atlas cache --config configs/smoke.yaml      # small real cache
+uv run atlas benchmark --config configs/smoke.yaml  # tokens per second
 ```
