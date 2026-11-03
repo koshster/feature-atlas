@@ -51,11 +51,20 @@ Recorded in section 11 of `docs/PLAN.md`: noreply commit email for this repo, no
 | --- | --- |
 | Throughput, M1 Pro MPS, batch 32 | 15,763 tokens/s |
 | Throughput, M1 Pro CPU, batch 32 | 4,733 tokens/s |
+| Throughput, Kaggle GPU, batch 32 | 24,317 tokens/s |
+| Throughput, Kaggle GPU, batch 128 | 24,308 tokens/s |
+| Free disk on Kaggle | 19.5 GB |
 | Smoke cache | 2,000 contexts (256k tokens), 376 MB on disk, about 30 s |
 | float16 relative error on real activations | 8.7e-5 |
 | Processed model against Hugging Face | Log-probabilities within 1e-3 |
 
-Throughput uses random tokens, so it measures the model alone. The smoke cache time includes startup and model loading.
+Throughput uses random tokens, so it measures the model alone. The smoke cache time includes startup and model loading. The Kaggle GPU model wasn't recorded.
+
+**What the Kaggle numbers change:**
+
+- **Speed:** throughput is about half the plan's 50k tokens/s estimate. One 300M-token run needs about 3.4 hours of model time alone. The compute budget rises from about 20 to roughly 25 to 30 GPU hours, which spans one to two weekly quotas. The plan allowed for this.
+- **Batch size:** quadrupling the batch didn't help, so the GPU is already saturated at batch 32. Half-precision inference is the obvious speedup, but it changes the activations, so it needs the same validation as float16 storage before Phase 3 uses it.
+- **Disk:** 19.5 GB free caps a float16 cache at about 6M tokens once a safety margin is left. Evaluation and analysis caches will target 5M tokens.
 
 ### Failures and surprises
 
@@ -77,6 +86,6 @@ Whether to exclude position 0 from SAE training and evaluation. My recommendatio
 
 ### Not yet verified
 
-- Kaggle GPU throughput and disk size, which are this phase's remaining exit criteria. They need `notebooks/benchmark.ipynb` run from your Kaggle account, and the notebook is untested there.
+- Which GPU Kaggle assigned. The notebook prints it, but it wasn't captured.
 - `OnlineSource` is tested on the tiny model only, not at real scale.
 - The Mermaid diagram in `docs/PLAN.md`.
