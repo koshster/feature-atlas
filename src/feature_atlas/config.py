@@ -69,6 +69,78 @@ class CacheConfig(_Frozen):
         return self
 
 
+class SourceConfig(_Frozen):
+    """Where training activations come from, and which positions are used."""
+
+    kind: Literal["online", "shards"] = "online"
+    shard_dir: Path | None = None
+    # Position 0 has about 30x the norm of other positions in GPT-2, whatever the token,
+    # and would dominate an L2 loss. See the Phase 1 entry in docs/PROGRESS.md.
+    exclude_first_position: bool = True
+    # 2**19 tokens is about 1.6 GB at d_model 768 in float32.
+    buffer_tokens: int = Field(default=2**19, ge=2)
+    model_batch_size: int = Field(default=32, ge=1)
+
+    @model_validator(mode="after")
+    def _shards_need_a_directory(self) -> SourceConfig:
+        if self.kind == "shards" and self.shard_dir is None:
+            raise ValueError("source.kind 'shards' needs source.shard_dir")
+        return self
+
+
+class SAEConfig(_Frozen):
+    """Dictionary shape. The input width comes from the model."""
+
+    d_sae: int = Field(default=24_576, ge=1)  # 32 x 768
+
+
+class TrainConfig(_Frozen):
+    """Optimization settings. Defaults are starting points for the Phase 3 sweep."""
+
+    total_tokens: int = Field(default=300_000_000, ge=1)
+    batch_size: int = Field(default=4096, ge=1)
+    lr: float = Field(default=5e-5, gt=0)
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.999
+    lr_warmup_steps: int = Field(default=1_000, ge=0)
+    # The final fraction of steps decays the learning rate linearly to zero.
+    lr_decay_fraction: float = Field(default=0.2, ge=0, le=1)
+    # λ, in units where inputs are scaled to mean squared norm d_model. Not comparable
+    # with other implementations' λ; compare at matched L0 instead.
+    l1_coefficient: float = Field(default=5.0, ge=0)
+    l1_warmup_fraction: float = Field(default=0.05, ge=0, le=1)
+    max_grad_norm: float = Field(default=1.0, gt=0)
+    # Tokens used once, before training, to set the input scale and b_dec.
+    init_tokens: int = Field(default=2**16, ge=1)
+    dead_window_steps: int = Field(default=12_500, ge=1)
+    resample_every_steps: int = Field(default=25_000, ge=1)
+    resample_until_fraction: float = Field(default=0.5, ge=0, le=1)
+    resample_tokens: int = Field(default=2**17, ge=1)
+    # Features firing on more than this fraction of tokens are reported as dense.
+    dense_threshold: float = Field(default=0.1, gt=0, le=1)
+
+    @property
+    def total_steps(self) -> int:
+        return self.total_tokens // self.batch_size
+
+
+class RunConfig(_Frozen):
+    """Bookkeeping that doesn't change results, so it's excluded from the training hash."""
+
+    name: str = "default"
+    checkpoint_every_minutes: float = Field(default=10.0, gt=0)
+    checkpoint_every_steps: int | None = Field(default=None, ge=1)
+    keep_checkpoints: int = Field(default=2, ge=1)
+    log_every_steps: int = Field(default=100, ge=1)
+
+
+class EvalConfig(_Frozen):
+    """Held-out evaluation size."""
+
+    contexts: int = Field(default=512, ge=1)
+    batch_size: int = Field(default=16, ge=1)
+
+
 class AtlasConfig(_Frozen):
     """Top-level experiment config."""
 
@@ -76,6 +148,28 @@ class AtlasConfig(_Frozen):
     model: ModelConfig = ModelConfig()
     data: DataConfig = DataConfig()
     cache: CacheConfig = CacheConfig()
+    source: SourceConfig = SourceConfig()
+    sae: SAEConfig = SAEConfig()
+    train: TrainConfig = TrainConfig()
+    run: RunConfig = RunConfig()
+    eval: EvalConfig = EvalConfig()
+
+    def training_hash(self) -> str:
+        """Hash everything that determines a trained SAE.
+
+        A checkpoint is only resumed under the same hash. The shard directory is left out
+        because the same cache sits at different paths on a laptop and on Kaggle.
+        """
+        return stable_hash(
+            {
+                "seed": self.seed,
+                "model": self.model.model_dump(),
+                "data": self.data.model_dump(),
+                "source": self.source.model_dump(mode="json", exclude={"shard_dir"}),
+                "sae": self.sae.model_dump(),
+                "train": self.train.model_dump(),
+            }
+        )
 
     def activation_hash(self) -> str:
         """Hash everything that determines the cached bytes.

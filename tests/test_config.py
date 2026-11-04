@@ -2,7 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from feature_atlas.config import AtlasConfig, CacheConfig, load_config, stable_hash
+from feature_atlas.config import (
+    AtlasConfig,
+    CacheConfig,
+    RunConfig,
+    SourceConfig,
+    TrainConfig,
+    load_config,
+    stable_hash,
+)
 
 
 def test_hook_point_follows_layer() -> None:
@@ -48,3 +56,28 @@ def test_activation_hash_tracks_values_but_not_total_size() -> None:
     )
     assert base.activation_hash() == extended.activation_hash()
     assert base.activation_hash() != changed.activation_hash()
+
+
+def test_shard_source_needs_a_directory() -> None:
+    with pytest.raises(ValueError, match="shard_dir"):
+        SourceConfig(kind="shards")
+
+
+def test_training_hash_ignores_bookkeeping_and_paths() -> None:
+    base = AtlasConfig()
+    moved = base.model_copy(
+        update={
+            "run": RunConfig(name="other", log_every_steps=1),
+            "source": SourceConfig(kind="shards", shard_dir=Path("/elsewhere")),
+        }
+    )
+    on_shards = base.model_copy(
+        update={"source": SourceConfig(kind="shards", shard_dir=Path("/x"))}
+    )
+    assert moved.training_hash() == on_shards.training_hash()
+    retuned = base.model_copy(update={"train": TrainConfig(l1_coefficient=1.0)})
+    assert base.training_hash() != retuned.training_hash()
+
+
+def test_total_steps_rounds_down() -> None:
+    assert TrainConfig(total_tokens=10_000, batch_size=4096).total_steps == 2
