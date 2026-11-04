@@ -44,7 +44,7 @@ def resample_dead_features(
     if len(dead_indices) == 0:
         return 0
     losses = sae(inputs).squared_error
-    weights = losses.pow(2).double().cpu()
+    weights = losses.pow(2).cpu().double()
     if weights.sum() == 0:
         return 0
     chosen = torch.multinomial(

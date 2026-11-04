@@ -25,10 +25,10 @@ class ReconstructionStats:
 
     def update(self, x: torch.Tensor, reconstruction: torch.Tensor) -> None:
         """Add ``[tokens, d_model]`` inputs and reconstructions."""
-        x64 = x.detach().double().cpu()
+        x64 = x.detach().cpu().double()
         self.tokens += len(x64)
         self.residual_sum_squares += (
-            (x64 - reconstruction.detach().double().cpu()).pow(2).sum().item()
+            (x64 - reconstruction.detach().cpu().double()).pow(2).sum().item()
         )
         self.sum += x64.sum(dim=0)
         self.sum_squares += x64.pow(2).sum(dim=0)
@@ -53,7 +53,7 @@ class FeatureStats:
 
     def update(self, features: torch.Tensor) -> None:
         """Add ``[tokens, d_sae]`` feature activations."""
-        fired = (features.detach() > 0).double().cpu()
+        fired = (features.detach() > 0).cpu().double()
         self.tokens += len(fired)
         self.fires += fired.sum(dim=0)
 

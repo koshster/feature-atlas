@@ -13,7 +13,7 @@ def estimate_input_scale(x: torch.Tensor) -> float:
     Args:
         x: ``[tokens, d_model]`` raw activations.
     """
-    mean_squared_norm = x.double().pow(2).sum(dim=1).mean().item()
+    mean_squared_norm = x.detach().cpu().double().pow(2).sum(dim=1).mean().item()
     if mean_squared_norm == 0:
         raise ValueError("Cannot scale all-zero activations")
     return float((x.shape[1] / mean_squared_norm) ** 0.5)
@@ -27,13 +27,15 @@ def geometric_median(
     Each step is a mean weighted by inverse distance, so points far from the current
     estimate count less. That makes it robust to outliers in a way the mean is not.
 
+    Runs in float64 on the CPU, since MPS has no float64 support.
+
     Args:
         points: ``[n, d]``.
 
     Returns:
-        ``[d]``.
+        ``[d]``, float64 on the CPU.
     """
-    points = points.double()
+    points = points.detach().cpu().double()
     median = points.mean(dim=0)
     for _ in range(iterations):
         weights = 1.0 / (points - median).norm(dim=1).clamp_min(1e-12)
