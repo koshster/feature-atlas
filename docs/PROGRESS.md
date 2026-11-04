@@ -58,7 +58,7 @@ Recorded in section 11 of `docs/PLAN.md`: noreply commit email for this repo, no
 | float16 relative error on real activations | 8.7e-5 |
 | Processed model against Hugging Face | Log-probabilities within 1e-3 |
 
-Throughput uses random tokens, so it measures the model alone. The smoke cache time includes startup and model loading. The Kaggle GPU model wasn't recorded.
+Throughput uses random tokens, so it measures the model alone. The smoke cache time includes startup and model loading. The Kaggle session had two Tesla T4s with 15 GB each, and the benchmark used one of them.
 
 **What the Kaggle numbers change:**
 
@@ -82,10 +82,72 @@ Throughput uses random tokens, so it measures the model alone. The smoke cache t
 
 ### Decision for Phase 2
 
-Whether to exclude position 0 from SAE training and evaluation. My recommendation is to exclude it from both and report it clearly, then check how the reference SAE's numbers change, so the comparison stays fair.
+Whether to exclude position 0 from SAE training and evaluation. Decided on 2026-11-03: exclude it from both, and evaluate the reference SAE the same way.
 
 ### Not yet verified
 
-- Which GPU Kaggle assigned. The notebook prints it, but it wasn't captured.
 - `OnlineSource` is tested on the tiny model only, not at real scale.
 - The Mermaid diagram in `docs/PLAN.md`.
+
+## Phase 2: SAE from scratch (2026-11-04)
+
+### What was done
+
+- **Model:** a ReLU SAE with a unit-norm dictionary, decoder gradient projection, and inputs scaled to mean squared norm `d_model`.
+- **Initialization:** input scale and a geometric-median `b_dec`, both set from data.
+- **Dead features:** resampled toward badly reconstructed inputs, with Adam state reset for the changed weights.
+- **Training:** the loop has learning-rate and λ warm-ups, gradient clipping, atomic checkpoints, config hash checks and exact resume.
+- **Evaluation:** streaming explained variance, MSE, L0, dead and dense fractions, and loss recovered, spliced into GPT-2.
+- **Commands:** `atlas train` and `atlas eval`. SAEs are saved as safetensors.
+- **Position 0:** excluded from training and evaluation by default, as decided after Phase 1.
+
+### Measured results
+
+109 fast tests pass in about 4 s.
+
+**Planted dictionary.** Synthetic data is built from 48 known unit directions, with about 2.9 active per token. A 64-feature SAE recovers every direction with cosine similarity of at least 0.989, against a mean of 0.42 for the untrained control. Across five other data and initialization seeds, the worst direction scored between 0.976 and 0.984. On the default seed, raising λ shows the expected tradeoff:
+
+| λ | L0 | Explained variance |
+| --- | --- | --- |
+| 0.3 | 10.7 | 0.964 |
+| 1.0 | 5.5 | 0.930 |
+| 3.0 | 3.4 | 0.746 |
+
+At λ=3, L0 approaches the true 2.9, but explained variance falls. That's L1 shrinkage: the penalty also pulls active features' values below their true size.
+
+**Kill and resume.** A run killed at step 40, with resampling on both sides of the kill, resumes from its step-20 checkpoint to weights identical to an uninterrupted run.
+
+**Laptop smoke run on real GPT-2.** 8× dictionary (6,144 features), 4M tokens, λ=5, about 6 min 40 s on M1 Pro MPS, roughly 10k tokens/s including the model. Held-out evaluation on 32.5k tokens:
+
+| Metric | Value |
+| --- | --- |
+| Explained variance | 0.455 |
+| L0 | 7.7 |
+| CE clean / SAE / zero | 3.660 / 5.309 / 11.131 |
+| Loss recovered | 0.779 |
+
+These numbers only show the pipeline works end to end. λ=5 on so short a run is very sparse, and Phase 3 will tune it.
+
+### Failures and surprises
+
+1. **The first recovery test passed for the wrong reason.** The SAE's initialization and the synthetic data both used seed 0, so the SAE's random starting directions *were* the planted ones. The untrained control scored 1.0 and exposed it. Fix: separate seeds, and the control stays in the test.
+2. **MPS has no float64.** Converting to float64 before moving to the CPU crashed the first real run. CI is CPU-only, so it couldn't catch this. Fix: convert on the CPU.
+3. **I understated online resume loss.** A resumed `OnlineSource` loses up to the buffer *plus one model batch*, not just the buffer. A test caught it, and the docstring now says so.
+4. **Evaluation's dead fraction depends on sample size.** It was 65% on 32.5k evaluation tokens, against 0.6% from training's 200-step window. With L0 about 8 across 6,144 features, many rare features simply never appear in a small sample. Phase 3 needs at least 1M evaluation tokens before reporting this number.
+5. **A git step bundled three commits into one.** `git stash -u` also stashed staged files. Fix: `--keep-index`. Every Phase 2 commit was then tested on its own before committing.
+
+### What you should understand
+
+- Why unit-norm decoder rows stop the L1 penalty being dodged, and why the gradient is projected before Adam sees it.
+- Why inputs are scaled, and why λ still can't be compared across implementations.
+- Why `b_dec` starts at the geometric median and not the mean.
+- Why resampling resets Adam's moments.
+- Why the recovery test needs an untrained control.
+- What L1 shrinkage is, and how it shows up in the λ table above.
+- What loss recovered measures, and why position 0 is left untouched in both splices.
+
+### Not yet verified
+
+- Training throughput for a 32× SAE on a T4. The SAE's matrix multiplications may cost more than the model itself at that size, so Phase 3 measures this first.
+- How the reference SAE scores under our evaluation, with position 0 excluded.
+- Hub sync for checkpoints and W&B tracking. Both are deferred to Phase 3, where training first runs on Kaggle.
