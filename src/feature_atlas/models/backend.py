@@ -7,7 +7,7 @@ later means changing this file alone.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -77,6 +77,39 @@ class ModelBackend:
         """
         output: torch.Tensor = self.model(tokens.to(self.device), stop_at_layer=self.hook_layer)
         return output
+
+    @property
+    def hook_point(self) -> str:
+        return f"blocks.{self.hook_layer}.hook_resid_pre"
+
+    @torch.inference_mode()
+    def next_token_loss(
+        self,
+        tokens: torch.Tensor,
+        patch: Callable[[torch.Tensor], torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        """Run the full model and return per-token cross-entropy.
+
+        Args:
+            tokens: ``[batch, context]`` integer tokens.
+            patch: Optional function replacing the ``[batch, context, d_model]`` residual
+                stream at ``hook_point``, for splicing in reconstructions or ablations.
+
+        Returns:
+            ``[batch, context - 1]`` losses for predicting each next token.
+        """
+
+        def hook(activations: torch.Tensor, hook: object) -> torch.Tensor:
+            assert patch is not None
+            return patch(activations)
+
+        hooks: list[tuple[str | Callable[..., Any], Callable[..., Any]]] = (
+            [] if patch is None else [(self.hook_point, hook)]
+        )
+        losses: torch.Tensor = self.model.run_with_hooks(
+            tokens.to(self.device), return_type="loss", loss_per_token=True, fwd_hooks=hooks
+        )
+        return losses
 
 
 def load_backend(config: ModelConfig, device: torch.device) -> ModelBackend:
