@@ -20,6 +20,7 @@ htmlcov/
 /checkpoints/
 /data/
 /outputs/
+/runs/
 /wandb/
 *.safetensors
 *.pt
