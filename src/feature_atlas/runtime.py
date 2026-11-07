@@ -61,7 +61,12 @@ class _JsonFormatter(logging.Formatter):
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    """Send one JSON object per line to stderr, so runs can be parsed afterwards."""
+    """Send one JSON object per line to stderr, so runs can be parsed afterwards.
+
+    Only this package logs at ``level``. Libraries log warnings and above, because HTTP
+    clients log every request, which would bury training progress.
+    """
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(_JsonFormatter())
-    logging.basicConfig(level=level, handlers=[handler], force=True)
+    logging.basicConfig(level=logging.WARNING, handlers=[handler], force=True)
+    logging.getLogger("feature_atlas").setLevel(level)

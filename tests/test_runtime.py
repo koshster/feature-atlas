@@ -33,7 +33,13 @@ def test_kaggle_is_detected(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_logs_are_json_with_extra_fields(capsys: pytest.CaptureFixture[str]) -> None:
     configure_logging()
-    logging.getLogger("test").info("done", extra={"fields": {"shard": 3}})
+    logging.getLogger("feature_atlas.test").info("done", extra={"fields": {"shard": 3}})
     entry = json.loads(capsys.readouterr().err.strip())
     assert entry["message"] == "done"
     assert entry["shard"] == 3
+
+
+def test_library_info_logs_are_suppressed(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging()
+    logging.getLogger("httpx").info("GET https://example.com")
+    assert capsys.readouterr().err == ""

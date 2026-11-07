@@ -6,7 +6,7 @@ The full design is in `docs/PLAN.md`. Phase status, results and failure stories 
 
 ## Current status
 
-Phase 1 (foundations): activation pipeline built and tested. See `docs/PROGRESS.md` for what remains.
+Phase 2 (SAE from scratch) complete: training, resume and evaluation are tested. Phase 3 runs real experiments.
 
 ## Hard rules
 
@@ -43,6 +43,10 @@ Phase 1 (foundations): activation pipeline built and tested. See `docs/PROGRESS.
 - `stop_at_layer=N` stops before block N, so that block's `hook_resid_pre` never fires. Use the returned residual, as `ModelBackend.activations` does.
 - Position 0 of every context has about 30× the norm of other positions, whatever the token, and holds 88% of the squared magnitude. It can dominate L2 loss and explained variance.
 - Report online-source reproducibility as statistical. Only shard-based resume is bit-exact.
+- MPS has no float64. Move tensors to the CPU before calling `.double()`.
+- `W_dec` is stored `[d_sae, d_model]`: each row is a feature's direction, a column in the usual math notation.
+- Synthetic test data and SAE initialization must use different seeds. With equal seeds, an untrained SAE matches the planted dictionary exactly.
+- Evaluation's dead fraction depends on how many tokens are evaluated. Use at least 1M tokens before reporting it.
 
 ## Engineering standards
 
@@ -66,4 +70,6 @@ uv run pre-commit run --all-files          # all hooks
 uv run atlas --help                        # CLI
 uv run atlas cache --config configs/smoke.yaml      # small real cache
 uv run atlas benchmark --config configs/smoke.yaml  # tokens per second
+uv run atlas train --config configs/smoke.yaml      # small SAE, about 7 min on MPS
+uv run atlas eval --config configs/smoke.yaml       # held-out metrics as JSON
 ```

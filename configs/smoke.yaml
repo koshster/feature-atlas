@@ -6,3 +6,16 @@ data:
 cache:
   total_contexts: 2000
   shard_contexts: 500
+sae:
+  d_sae: 6144  # 8 x 768, small enough for a laptop
+train:
+  total_tokens: 4_000_000
+  lr: 4.0e-4  # the default suits 300M-token runs; this run is far shorter
+  lr_warmup_steps: 50
+  dead_window_steps: 200
+  resample_every_steps: 400
+run:
+  name: smoke
+  log_every_steps: 50
+eval:
+  contexts: 256
